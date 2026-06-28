@@ -180,5 +180,26 @@ RIPLEY_SEED = {
     "Standing Calf Raise": 0,   # bodyweight, 3s/3s tempo
 }
 
-# Band-assisted lifts — progression list pending from Nate.
+# Band-assisted lifts — assistance reduced one band level per success.
 BAND_ASSISTED = ["Assisted Dip (band)", "Assisted Pull-Up (band)", "Assisted Chin-Up (band)"]
+
+# Band ladder, MOST assistance (easiest) -> LEAST (hardest). Progression steps
+# DOWN this list (index += 1). `assist` is the representative assist load (lb,
+# midpoint of the resistance range) used for Liftosaur's assisting-equipment math.
+# After the last band, the next step is bodyweight (no assist), then added weight.
+BANDS = [
+    {"color": "Black",  "lbs": (60, 170), "assist": 115},
+    {"color": "Red",    "lbs": (50, 125), "assist": 87},
+    {"color": "Yellow", "lbs": (40, 80),  "assist": 60},
+    {"color": "Purple", "lbs": (30, 50),  "assist": 40},
+    {"color": "Green",  "lbs": (20, 35),  "assist": 27},
+    {"color": "Blue",   "lbs": (15, 25),  "assist": 20},
+]
+# default starting band for an assisted lift (index into BANDS)
+BAND_START = 0  # Black / most assistance
+
+
+def band_assist(level):
+    """Representative assist load (lb) for a band level; 0 = bodyweight past the list."""
+    return BANDS[level]["assist"] if 0 <= level < len(BANDS) else 0
+
