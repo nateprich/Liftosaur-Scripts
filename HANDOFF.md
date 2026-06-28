@@ -31,7 +31,7 @@ plan and remains the fallback if Option A evals fail. See `docs/integration-plan
 |---|---|
 | Protocol fully specified | ✅ `docs/protocol.md` |
 | Liftoscript feasibility (primitives) | ✅ proven in playground (see §5) |
-| Collision-aware rotation works in-app | ✅ proven end-to-end (2-day + 4-day) |
+| Collision-aware rotation works in-app | ✅ 2-day end-to-end + **4-day multi-skip vs oracle** (`lifting/evals/rotation_poc.py`) |
 | Exercise name resolution (58 names) | ✅ 19 known, 23 canonical maps, 16 customs |
 | Full-program generator | ✅ `lifting/evals/generate.py` |
 | **Tier-4 size probe (make-or-break)** | ✅ **PASSED — 37 KB / 108 listings parses+runs 0.7s** |
@@ -91,6 +91,8 @@ machine-readable source) and `docs/protocol.md` (prose).
 | `update: custom()` self-gates from own state | ✅ (`setIndex==0`) | per-day visibility |
 | Same-session cross-write visible to controller | ✅ | controller reacts same session, no lag |
 | Collision-aware rotation, 2-day + 4-day pools | ✅ end-to-end | rotation is fully in-app-able |
+| 4-day multi-skip (unrolled, no `while`) vs oracle | ✅ 6-step sequence all match | the riskiest rotation case is solid |
+| `set_state_variable` *command* timing | ⚠ applies **+1 session late** | drive exhaustion via exercise progress (own `completedReps` or cross-write), NOT the command |
 | Full program (108 listings, 37 KB, big controller) | ✅ parses+runs 0.7s | **no size ceiling — Option A viable** |
 | REST custom-exercise endpoint | ❌ 404 | register customs via MCP or app |
 
