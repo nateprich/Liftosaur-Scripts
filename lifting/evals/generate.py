@@ -163,16 +163,17 @@ def generate(mode="eval", weight=100):
             out.append(f"{pref} / 1x40 {pw}lb")
 
         # single centralized controller (defined once, reused after)
+        engine = "Rotation Engine" if mode == "prod" else "Wrist Roller"
         if "CTRL" not in defined:
-            out.append(_controller(slots, slotvar, sloti, days_of, uid, init))
+            out.append(_controller(slots, slotvar, sloti, days_of, uid, init, engine))
             defined.add("CTRL")
         else:
-            out.append("Wrist Roller / 1x1 0lb")
+            out.append(f"{engine} / 1x1 0lb")
 
     return "\n".join(out) + "\n"
 
 
-def _controller(slots, slotvar, sloti, days_of, uid, init):
+def _controller(slots, slotvar, sloti, days_of, uid, init, engine="Wrist Roller"):
     """One exercise holding ALL area×day rotation indices plus a per-slot exhaust
     flag. On finishWorkout: for any slot whose exhaust flag is set, advance its
     index (collision-aware vs sibling days of the same area), clear the flag, then
@@ -197,5 +198,5 @@ def _controller(slots, slotvar, sloti, days_of, uid, init):
         v = slotvar[(a, d)]
         for k, ex in enumerate(pool):
             pieces.append(f"state[{uid(ex)}].a{d} = state.{v} == {k} ? 1 : 0")
-    return (f"Wrist Roller / 1x1 0lb / id: tags(999) "
+    return (f"{engine} / 1x1 0lb / id: tags(999) "
             f"/ progress: custom({', '.join(decls)}) {{~ {' '.join(pieces)} ~}}")

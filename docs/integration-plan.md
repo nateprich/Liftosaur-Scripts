@@ -6,7 +6,15 @@ last_updated: 2026-06-28
 
 # Liftosaur Integration & Automation Plan
 
-How the deterministic lifting engine (`scripts/lifting/`) will use Liftosaur as
+> **Status (2026-06-28): FALLBACK / not active.** Option A (full in-app, no server)
+> was built, validated, and shipped — program "T1/T2/T3 Auto-Rotation" (id=svgippbw).
+> This hybrid (a nightly Python job does the pool swap, app does per-exercise
+> progression) is **kept intentionally** as the revert path. Come back here if the
+> in-app rotation proves too complex to tweak by hand. The engine/oracle, swap logic,
+> and REST `PUT /programs` plumbing already exist; reviving B is mostly: stop
+> emitting the controller, add `exhausted` flags, and schedule `sync.py`.
+
+How the deterministic lifting engine (`lifting/`) will use Liftosaur as
 its logging + display surface, and how the nightly sync is scheduled. Grounded in
 the Liftosaur REST API and Liftoscript docs (repo: github.com/astashov/liftosaur).
 
@@ -146,7 +154,11 @@ only needed if we later want analytics.
 ## 7. Open items before go-live
 
 - **Band progression list** (assist levels, lightest→heaviest) — needed for the
-  three assisted lifts.
+  three assisted lifts. **Decided 2026-06-28:** assisted variants (Assisted Dip/
+  Pull-Up/Chin-Up) rotate **in the same pool** as their weighted siblings, so the
+  swap is normal rotation; only the per-exercise progression differs (step DOWN the
+  band ladder per success, then bodyweight, then add weight). Ladder lives in
+  `protocol.BANDS`.
 - **Per-exercise anchors** for bodyweight-rep and time T3 (prototype defaults to 20).
 - **Time-based representation** in Liftosaur (description vs timer) — pick one.
 - **Validate the `progress: custom()` scripts** in the playground (esp. the T1

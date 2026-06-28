@@ -206,12 +206,14 @@ and two intentional simplifications to confirm with Nate.
      exhaust over a few sessions to watch the rotation advance. The progression
      math is oracle-validated, but the playground can't simulate a partial "miss"
      for a `completedReps >= reps` script, so a single real session is the final proof.
-2. **Bodyweight/banded T3 progression (simplification to confirm).** All T2/T3 pool
-   exercises currently use the weighted ladder (+5lb on completion). Bodyweight T3
-   movements start at 0lb and "progress" by adding external load. The **band-assist
-   ladder is encoded** (`protocol.BANDS`, `band_assist()`) but **not yet wired** into
-   the progression scripts. If Nate wants rep-based or band-reduction progression for
-   pure-bodyweight movements, that's a focused follow-up in `generate._pool_progress`.
+2. **Bands — decided, not yet wired.** Assisted Dip/Pull-Up/Chin-Up rotate **in the
+   same pool** as their weighted siblings (so rotation is unchanged); only progression
+   differs. To finish: (a) oracle steps assist DOWN `protocol.BANDS` per success →
+   bodyweight → +weight; (b) generator emits an assist branch (Liftosaur assisting
+   equipment / negative weight — needs a one-off playground test); (c) band suite in
+   differential; (d) `install --update`. ~1-2 hr. All other T2/T3 use the weighted
+   ladder; non-band bodyweight starts 0lb +5lb. Per-exercise bodyweight/time anchors
+   still pending from Nate.
 3. **Starting weights.** Seeded lifts use Ripley values; non-seeded weighted pool
    exercises default to **45lb** (placeholder to dial in-app on first exposure).
    Provide real seeds (or a KeyLifts pull) to replace the defaults.
@@ -240,3 +242,7 @@ Commit frequently (small logical commits) so progress survives context limits.
   leaving Nate's existing 9 untouched. Remaining work is in-app acceptance (§9), not
   build work. The build path (`protocol → engine/oracle → generate → install`) is
   fully reproducible via `python3 -m lifting.install`.
+- **Controller named "Rotation Engine" (2026-06-28):** the carrier exercise (tag 999,
+  1x1 0lb) is a registered custom so it's self-explanatory in the app. Eval mode keeps
+  "Wrist Roller" for deterministic probes. Bands: assisted variants rotate in-pool —
+  hybrid Option B kept as the documented revert path (`docs/integration-plan.md`).
