@@ -15,35 +15,56 @@ from .. import protocol as P
 from .. import liftosaur_names as N
 
 
-def _setvars(tier, ex=None):
+def _setvars(tier, weight, ex=None):
+    """Set/rep/weight schemes per tier, with per-group weights (validated:
+    shared trailing weight after a comma breaks the parser)."""
+    w = f"{weight}lb"
     if tier == "t1":
-        return "3x4,1x4+ / 3x3,1x3+ / 3x2,1x2+"
+        return f"3x4 {w},1x4+ {w} / 3x3 {w},1x3+ {w} / 3x2 {w},1x2+ {w}"
     if tier == "t2":
-        return "4x12 / 4x10 / 4x8"
+        return f"4x12 {w} / 4x10 {w} / 4x8 {w}"
     # t3
     kind = P.t3_type(ex) if ex else "weighted"
     if kind == "weighted":
-        return "1x25,1x20,1x15 / 1x20,1x15,1x10 / 1x15,1x8,1x7"
-    return "3x20 / 3x16 / 3x12"
+        return (f"1x25 {w},1x20 {w},1x15 {w} / 1x20 {w},1x15 {w},1x10 {w} "
+                f"/ 1x15 {w},1x8 {w},1x7 {w}")
+    return f"3x20 {w} / 3x16 {w} / 3x12 {w}"
 
 
-def _t1_script():
-    return ("progress: custom(prevL1: 0lb) {~ "
+def _t1_script(weight):
+    """T1 AMRAP ladder: +5/+10 on AMRAP overshoot, level drop on miss, 90% reset
+    after L3. Tracks state.w and writes weights = state.w (validated vs oracle)."""
+    return (f"progress: custom(prevL1: {weight}lb, w: {weight}lb) {{~ "
             "var.base = setVariationIndex == 1 ? 4 : (setVariationIndex == 2 ? 3 : 2) "
             "var.extra = completedReps[ns] - var.base "
-            "if (var.extra >= 5) { weights += 10lb } "
-            "else if (var.extra >= 1) { weights += 5lb } "
-            "else if (setVariationIndex == 1) { state.prevL1 = weights[1]; setVariationIndex = 2 } "
+            "if (var.extra >= 5) { state.w += 10lb } "
+            "else if (var.extra >= 1) { state.w += 5lb } "
+            "else if (setVariationIndex == 1) { state.prevL1 = state.w; setVariationIndex = 2 } "
             "else if (setVariationIndex == 2) { setVariationIndex = 3 } "
-            "else { setVariationIndex = 1; weights = roundWeight(state.prevL1 * 0.9) } ~}")
+            "else { setVariationIndex = 1; state.w = round(state.prevL1 * 0.9 / 5lb) * 5lb } "
+            "weights = state.w ~}")
 
 
-def _pool_progress():
-    return ("progress: custom(a1: 0, a2: 0, a3: 0, a4: 0, lastL1: 0lb, exhausted: 0) {~ "
+def _pool_progress(weight, area, k, days_of, sloti, init):
+    """T2/T3 pool exercise: +5 on full completion, level drop on miss, and on
+    exhaustion (miss at L3) cross-write the controller's per-day exhaust flag and
+    self-reset to L1 at lastL1-5 (validated vs oracle). Active flags a1..a4 are
+    pre-seeded so the day-1 active exercise renders before the controller runs."""
+    ainit = {1: 0, 2: 0, 3: 0, 4: 0}
+    for d in days_of[area]:
+        ainit[d] = 1 if init[(area, d)] == k else 0
+    branch = []
+    for j, d in enumerate(sorted(days_of[area])):
+        kw = "if" if j == 0 else "else if"
+        branch.append(f"{kw} (day == {d}) {{ state[999].e{sloti[(area, d)]} = 1 }}")
+    exhaust = " ".join(branch)
+    return (f"progress: custom(a1: {ainit[1]}, a2: {ainit[2]}, a3: {ainit[3]}, a4: {ainit[4]}, "
+            f"lastL1: {weight}lb, w: {weight}lb) {{~ "
             "if (completedReps >= reps) { "
-            "if (setVariationIndex == 1) { state.lastL1 = weights[1] } weights += 5lb "
+            "if (setVariationIndex == 1) { state.lastL1 = state.w } state.w += 5lb "
             "} else if (setVariationIndex < 3) { setVariationIndex += 1 } "
-            "else { state.exhausted = 1 } ~}")
+            f"else {{ {exhaust} setVariationIndex = 1; state.w = state.lastL1 - 5lb }} "
+            "weights = state.w ~}")
 
 
 def _pool_update():
@@ -68,6 +89,19 @@ def generate(mode="eval", weight=100):
         for area in cfg["t3"]:
             slots.append((area, day, "t3", P.T3_POOLS[area]))
     slotvar = {(a, d): f"s{i+1}" for i, (a, d, _, _) in enumerate(slots)}
+    sloti = {(a, d): i + 1 for i, (a, d, _, _) in enumerate(slots)}
+    days_of = {}
+    for (a, d, _, _) in slots:
+        days_of.setdefault(a, []).append(d)
+    size = {(a, d): len(pool) for (a, d, _, pool) in slots}
+    # Initial slot index per (area, day): stagger by the area's day-order so the
+    # day-1 and day-N exercises start on different pool members (collision-free).
+    init = {(a, d): sorted(days_of[a]).index(d) % size[(a, d)] for (a, d, _, _) in slots}
+    # Index of each exercise within its pool, per area, for active-flag seeding.
+    pool_index = {}
+    for (a, d, _, pool) in slots:
+        for k, ex in enumerate(pool):
+            pool_index[(a, ex)] = k
     for _, _, _, pool in slots:        # pre-assign uids so the controller can address all
         for ex in pool:
             uid(ex)
@@ -81,10 +115,10 @@ def generate(mode="eval", weight=100):
         # T1 (fixed; progression defined once)
         t1 = cfg["t1"]; ref = N.liftosaur_ref(t1, mode)
         if t1 not in defined:
-            out.append(f"{ref} / {_setvars('t1')} {weight}lb / {_t1_script()}")
+            out.append(f"{ref} / {_setvars('t1', weight)} / {_t1_script(weight)}")
             defined.add(t1)
         else:
-            out.append(f"{ref} / {_setvars('t1')} {weight}lb")
+            out.append(f"{ref} / {_setvars('t1', weight)}")
 
         # T2 + T3 slots: list every pool exercise, gated
         for tier, areas in (("t2", cfg["t2"]), ("t3", cfg["t3"])):
@@ -93,11 +127,13 @@ def generate(mode="eval", weight=100):
                 for ex in pools[area]:
                     ref = N.liftosaur_ref(ex, mode)
                     if ex not in defined:
-                        out.append(f"{ref} / {_setvars(tier, ex)} {weight}lb / id: tags({uid(ex)}) "
-                                   f"/ {_pool_progress()} / {_pool_update()}")
+                        k = pool_index[(area, ex)]
+                        out.append(f"{ref} / {_setvars(tier, weight, ex)} / id: tags({uid(ex)}) "
+                                   f"/ {_pool_progress(weight, area, k, days_of, sloti, init)} "
+                                   f"/ {_pool_update()}")
                         defined.add(ex)
                     else:
-                        out.append(f"{ref} / {_setvars(tier, ex)} {weight}lb")
+                        out.append(f"{ref} / {_setvars(tier, weight, ex)}")
 
         # prehab finisher (fixed A/B; show A)
         pre = cfg["prehab"]["A"]; pref = N.liftosaur_ref(pre, mode)
@@ -111,7 +147,7 @@ def generate(mode="eval", weight=100):
 
         # single centralized controller (defined once, reused after)
         if "CTRL" not in defined:
-            out.append(_controller(slots, slotvar, uid))
+            out.append(_controller(slots, slotvar, sloti, days_of, uid, init))
             defined.add("CTRL")
         else:
             out.append("Wrist Roller / 1x1 0lb")
@@ -119,15 +155,30 @@ def generate(mode="eval", weight=100):
     return "\n".join(out) + "\n"
 
 
-def _controller(slots, slotvar, uid):
-    """One exercise holding ALL area×day rotation indices. Pushes each pool
-    exercise's per-day active flag from its slot index. (Collision/exhaustion
-    advance is validated in the differential phase; here it's representative size.)"""
-    decls = ["tick: 0"] + [f"{v}: 0" for v in slotvar.values()]
+def _controller(slots, slotvar, sloti, days_of, uid, init):
+    """One exercise holding ALL area×day rotation indices plus a per-slot exhaust
+    flag. On finishWorkout: for any slot whose exhaust flag is set, advance its
+    index (collision-aware vs sibling days of the same area), clear the flag, then
+    push every pool exercise's per-day active flag from the current slot index.
+    Advance + collision logic validated vs the oracle (controller_suite)."""
+    decls = ["tick: 0"]
+    for (a, d, _, _) in slots:
+        decls.append(f"{slotvar[(a, d)]}: {init[(a, d)]}")
+        decls.append(f"e{sloti[(a, d)]}: 0")
     pieces = ["state.tick += 1"]
-    for area, day, tier, pool in slots:
-        v = slotvar[(area, day)]
+    # exhaustion-driven, collision-aware advance
+    for (a, d, _, pool) in slots:
+        v = slotvar[(a, d)]; i = sloti[(a, d)]; s = len(pool)
+        sibs = [slotvar[(a, dd)] for dd in days_of[a] if dd != d]
+        adv = f"state.{v} = (state.{v} + 1) % {s}; "
+        if sibs:
+            cond = " || ".join(f"state.{v} == state.{sb}" for sb in sibs)
+            adv += " ".join(f"if ({cond}) {{ state.{v} = (state.{v} + 1) % {s} }}" for _ in sibs)
+        pieces.append(f"if (state.e{i} == 1) {{ state.e{i} = 0; {adv} }}")
+    # push active flags from current slot indices
+    for (a, d, _, pool) in slots:
+        v = slotvar[(a, d)]
         for k, ex in enumerate(pool):
-            pieces.append(f"state[{uid(ex)}].a{day} = state.{v} == {k} ? 1 : 0")
+            pieces.append(f"state[{uid(ex)}].a{d} = state.{v} == {k} ? 1 : 0")
     return (f"Wrist Roller / 1x1 0lb / id: tags(999) "
             f"/ progress: custom({', '.join(decls)}) {{~ {' '.join(pieces)} ~}}")
