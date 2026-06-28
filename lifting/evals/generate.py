@@ -85,6 +85,37 @@ def _pool_update():
             "if (day == 4 && state.a4 == 0) { numberOfSets = 0 } } ~}")
 
 
+def _band_w_expr():
+    """Nested ternary: state.band step -> signed weight (negative = assist)."""
+    expr = "(state.band - 6) * 5lb"
+    for step in range(P.BAND_BODYWEIGHT, 0, -1):
+        expr = f"state.band == {step} ? {P.band_weight(step)}lb : ({expr})"
+    return expr
+
+
+def _band_progress(area, k, days_of, sloti, init):
+    """Band-assisted T2: success removes one band step (assist -> bodyweight ->
+    +weight); miss drops a rep level; exhaust at L3 rotates. Same ladder/exhaust
+    wiring as _pool_progress, weight axis replaced by the band step."""
+    ainit = {1: 0, 2: 0, 3: 0, 4: 0}
+    for d in days_of[area]:
+        ainit[d] = 1 if init[(area, d)] == k else 0
+    branch = []
+    for j, d in enumerate(sorted(days_of[area])):
+        kw = "if" if j == 0 else "else if"
+        branch.append(f"{kw} (day == {d}) {{ state[999].e{sloti[(area, d)]} = 1 }}")
+    exhaust = " ".join(branch)
+    start = P.band_weight(0)
+    return (f"progress: custom(a1: {ainit[1]}, a2: {ainit[2]}, a3: {ainit[3]}, a4: {ainit[4]}, "
+            f"band: 0, w: {start}lb) {{~ "
+            "if (completedReps >= reps) { state.band += 1 "
+            f"state.w = {_band_w_expr()} "
+            "} else if (setVariationIndex < 3) { setVariationIndex += 1 } "
+            f"else {{ {exhaust} setVariationIndex = 1; state.band = 0; state.w = {start}lb }} "
+            "weights = state.w ~}")
+
+
+
 def generate(mode="eval", weight=100):
     tags = {}
     def uid(ex):
@@ -143,11 +174,15 @@ def generate(mode="eval", weight=100):
             for area in areas:
                 for ex in pools[area]:
                     ref = N.liftosaur_ref(ex, mode); w = W(ex, tier)
+                    band = P.is_band_assisted(ex)
+                    if band:
+                        w = P.band_weight(0)   # start fully assisted (negative)
                     if ex not in defined:
                         k = pool_index[(area, ex)]
+                        prog = (_band_progress(area, k, days_of, sloti, init) if band
+                                else _pool_progress(w, area, k, days_of, sloti, init))
                         out.append(f"{ref} / {_setvars(tier, w, ex)} / id: tags({uid(ex)}) "
-                                   f"/ {_pool_progress(w, area, k, days_of, sloti, init)} "
-                                   f"/ {_pool_update()}")
+                                   f"/ {prog} / {_pool_update()}")
                         defined.add(ex)
                     else:
                         out.append(f"{ref} / {_setvars(tier, w, ex)}")

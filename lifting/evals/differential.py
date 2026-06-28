@@ -183,6 +183,38 @@ def t2_suite(steps=14):
     return ok
 
 
+def band_suite(steps=14):
+    from . import generate as G
+    prog = ("# Week 1\n## Day 1\n"
+            "Pull Up / 1x12 -115lb / 1x10 -115lb / 1x8 -115lb "
+            "/ progress: custom(band: 0, w: -115lb, lvl: 1) {~ "
+            "var.base = setVariationIndex == 1 ? 12 : (setVariationIndex == 2 ? 10 : 8) "
+            "if (completedReps[1] >= var.base) { state.band += 1 state.w = " + G._band_w_expr() + " } "
+            "else if (setVariationIndex < 3) { setVariationIndex += 1 } "
+            "else { setVariationIndex = 1; state.band = 0; state.w = -115lb } "
+            "weights = state.w  state.lvl = setVariationIndex ~}\n")
+    st = {"level": 1, "band": 0}
+    rng = random.Random(11)
+    ok = True
+    for step in range(steps):
+        done = rng.random() < 0.6
+        base = {1: 12, 2: 10, 3: 8}[st["level"]]
+        st, _, exhausted = E.apply_t2_band(st, done)
+        if exhausted:
+            st["level"] = 1
+            st["band"] = 0
+        reps = base if done else base - 2
+        prog = _post(prog, [f"change_reps(1, 1, {reps})", "complete_set(1, 1)", "finish_workout()"])
+        w = int(float(re.search(r"w: (-?[\d.]+)lb", prog).group(1)))
+        lvl = _active_level(prog, "Pull Up")
+        if (w, lvl) != (P.band_weight(st["band"]), st["level"]):
+            ok = False
+            print(f"  BAND step {step} done={done}: pg ({w}lb,L{lvl}) != oracle ({P.band_weight(st['band'])}lb,L{st['level']})")
+            break
+    print(f"4. BAND LADDER + EXHAUST ({steps} steps): {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 def main():
     print("=" * 60)
     print("DIFFERENTIAL EVALS — Liftoscript vs Python oracle")
@@ -190,9 +222,11 @@ def main():
     r1 = controller_suite()
     r2 = t1_suite()
     r3 = t2_suite()
+    r4 = band_suite()
     print("=" * 60)
-    print("OVERALL:", "ALL PASS" if (r1 and r2 and r3) else "FAILURES PRESENT")
-    return r1 and r2 and r3
+    allok = r1 and r2 and r3 and r4
+    print("OVERALL:", "ALL PASS" if allok else "FAILURES PRESENT")
+    return allok
 
 
 if __name__ == "__main__":

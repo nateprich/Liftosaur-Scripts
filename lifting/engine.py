@@ -104,6 +104,9 @@ def init_state(kl_derived):
         active = assign_initial_active(area)
         per_ex = {}
         for ex in (P.T2_POOLS.get(area) or P.T3_POOLS.get(area)):
+            if P.is_band_assisted(ex):
+                per_ex[ex] = {"level": 1, "band": P.BAND_START, "source": "band"}
+                continue
             kind = "t2" if area in P.T2_POOLS else P.t3_type(ex)
             if kind in ("t2", "weighted"):
                 w, src = derive_weight(ex, kl_proto)
@@ -152,6 +155,20 @@ def apply_t2(st, completed_all):
     if s["level"] < 3:
         s["level"] += 1
         return s, "miss -> drop to L%d (hold weight)" % s["level"], False
+    return s, "miss@L3 -> exhausted, swap exercise", True
+
+
+def apply_t2_band(st, completed_all):
+    """Band-assisted T2 ladder: success removes one band step of assistance (then
+    bodyweight, then +weight); miss drops a rep level; miss@L3 exhausts. Returns
+    (new_state, note, exhausted)."""
+    s = dict(st)
+    if completed_all:
+        s["band"] = st["band"] + 1
+        return s, "-1 band (step %d, %dlb)" % (s["band"], P.band_weight(s["band"])), False
+    if s["level"] < 3:
+        s["level"] += 1
+        return s, "miss -> drop to L%d (hold band)" % s["level"], False
     return s, "miss@L3 -> exhausted, swap exercise", True
 
 

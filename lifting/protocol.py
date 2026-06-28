@@ -203,3 +203,19 @@ def band_assist(level):
     """Representative assist load (lb) for a band level; 0 = bodyweight past the list."""
     return BANDS[level]["assist"] if 0 <= level < len(BANDS) else 0
 
+
+def band_weight(step):
+    """Signed weight for a band step. 0..5 = Black..Blue (assist, negative); 6 =
+    bodyweight (0); >6 = added weight (+5lb each). One success = step += 1."""
+    if step < len(BANDS):
+        return -BANDS[step]["assist"]
+    return (step - len(BANDS)) * 5
+
+
+BAND_BODYWEIGHT = len(BANDS)   # step index where assist hits 0 (bodyweight)
+
+
+def is_band_assisted(ex):
+    return ex in BAND_ASSISTED
+
+

@@ -41,6 +41,7 @@ plan and remains the fallback if Option A evals fail. See `docs/integration-plan
 | Register 16 customs in Liftosaur (production) | ✅ all 16 via MCP `create_custom_exercise` (`lifting/evals/register_customs.py`) |
 | **Program installed** | ✅ **"T1/T2/T3 Auto-Rotation" (id=svgippbw)** — NEW program, existing 9 untouched (`lifting/install.py`) |
 | Prod program parses+runs (account context) | ✅ 50 KB, 0.74s, no error (REST playground + MCP `run_playground`) |
+| Band-assisted progression | ✅ wired — oracle `apply_t2_band`, generator `_band_progress`, differential BAND suite PASS; assist via negative weight (−115→…→−20→0→+5) |
 | In-app smoke test (Nate) | ⬜ verify runtime gating + log one real session (see §9) |
 | Pending from Nate | confirm band-vs-rep progression for bodyweight T3; per-exercise bodyweight/time anchors; real seed weights for non-seeded pool lifts |
 
@@ -206,14 +207,13 @@ and two intentional simplifications to confirm with Nate.
      exhaust over a few sessions to watch the rotation advance. The progression
      math is oracle-validated, but the playground can't simulate a partial "miss"
      for a `completedReps >= reps` script, so a single real session is the final proof.
-2. **Bands — decided, not yet wired.** Assisted Dip/Pull-Up/Chin-Up rotate **in the
-   same pool** as their weighted siblings (so rotation is unchanged); only progression
-   differs. To finish: (a) oracle steps assist DOWN `protocol.BANDS` per success →
-   bodyweight → +weight; (b) generator emits an assist branch (Liftosaur assisting
-   equipment / negative weight — needs a one-off playground test); (c) band suite in
-   differential; (d) `install --update`. ~1-2 hr. All other T2/T3 use the weighted
-   ladder; non-band bodyweight starts 0lb +5lb. Per-exercise bodyweight/time anchors
-   still pending from Nate.
+2. **Bands — wired (verify in app).** Assisted Dip/Pull-Up/Chin-Up rotate in-pool;
+   progression steps DOWN `protocol.BANDS` per success → bodyweight → +weight, modeled
+   as **negative weight** (−115…−20→0→+5). Oracle `apply_t2_band`, generator
+   `_band_progress`, differential BAND suite all green. ⚠️ In-app: for the cleanest
+   display, mark Dip/Pull-Up/Chin-Up as **assisting-band equipment** in the gym so it
+   reads "bodyweight − assist"; the negative literal works either way. Non-band
+   bodyweight T3 still starts 0lb +5lb; per-exercise bodyweight/time anchors pending.
 3. **Starting weights.** Seeded lifts use Ripley values; non-seeded weighted pool
    exercises default to **45lb** (placeholder to dial in-app on first exposure).
    Provide real seeds (or a KeyLifts pull) to replace the defaults.
