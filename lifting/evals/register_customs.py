@@ -83,18 +83,19 @@ def main():
     ok, fail = 0, 0
     for i, name in enumerate(N.CUSTOM, 1):
         tm, sm, ty = META[name]
+        reg = N.prod_name(name)   # parser-safe registered name (no parens)
         res, err = _call("create_custom_exercise", {
-            "name": name,
+            "name": reg,
             "targetMuscles": json.dumps(tm),
             "synergistMuscles": json.dumps(sm),
             "types": json.dumps(ty),
         }, _id=i)
         if err:
             fail += 1
-            print(f"  FAIL {name}: {err}")
+            print(f"  FAIL {reg}: {err}")
         else:
             ok += 1
-            print(f"  ok   {name:32s} id={res.get('id')}")
+            print(f"  ok   {reg:32s} id={res.get('id')}")
         time.sleep(0.6)
     print(f"\n{ok}/{len(N.CUSTOM)} custom exercises registered ({fail} failed).")
     return fail == 0

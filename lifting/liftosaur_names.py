@@ -66,11 +66,19 @@ def clean(name):
     return re.sub(r"\s*\(band\)", "", name).strip()
 
 
+def prod_name(name):
+    """Parser-safe registered/referenced name. Liftoscript can't reference an
+    exercise whose name contains parentheses, so strip them (e.g.
+    'Bent-Knee (Soleus) Calf Raise' -> 'Bent-Knee Soleus Calf Raise')."""
+    n = clean(name).replace("(", "").replace(")", "")
+    return re.sub(r"\s{2,}", " ", n).strip()
+
+
 def liftosaur_ref(name, mode="eval"):
     """Resolve a protocol exercise name to a Liftosaur reference."""
     n = clean(name)
     if n in CANONICAL:
         return CANONICAL[n]
     if n in CUSTOM:
-        return PLACEHOLDER[n] if mode == "eval" else n
+        return PLACEHOLDER[n] if mode == "eval" else prod_name(n)
     return n  # already a built-in

@@ -12,7 +12,17 @@ separately against the Python oracle.
 """
 
 from .. import protocol as P
+from .. import engine as E
 from .. import liftosaur_names as N
+
+
+def _seed(ex, kind):
+    """Production starting weight: Ripley seed if known, else a conservative
+    default (0lb for bodyweight/time, 45lb for weighted) that Nate dials in-app."""
+    w, _src = E.derive_weight(ex, {})
+    if w is not None:
+        return w
+    return 0 if kind in ("bodyweight", "time") else 45
 
 
 def _setvars(tier, weight, ex=None):
@@ -106,6 +116,13 @@ def generate(mode="eval", weight=100):
         for ex in pool:
             uid(ex)
 
+    def W(ex, tier):
+        """Per-exercise weight: uniform in eval (deterministic probes), seeded in prod."""
+        if mode == "eval":
+            return weight
+        kind = "t2" if tier == "t2" else (P.t3_type(ex) if tier == "t3" else "t1")
+        return _seed(ex, kind)
+
     defined = set()
     out = ["# Week 1"]
     for day in (1, 2, 3, 4):
@@ -113,37 +130,37 @@ def generate(mode="eval", weight=100):
         out.append(f"## Day {day}")
 
         # T1 (fixed; progression defined once)
-        t1 = cfg["t1"]; ref = N.liftosaur_ref(t1, mode)
+        t1 = cfg["t1"]; ref = N.liftosaur_ref(t1, mode); tw = W(t1, "t1")
         if t1 not in defined:
-            out.append(f"{ref} / {_setvars('t1', weight)} / {_t1_script(weight)}")
+            out.append(f"{ref} / {_setvars('t1', tw)} / {_t1_script(tw)}")
             defined.add(t1)
         else:
-            out.append(f"{ref} / {_setvars('t1', weight)}")
+            out.append(f"{ref} / {_setvars('t1', tw)}")
 
         # T2 + T3 slots: list every pool exercise, gated
         for tier, areas in (("t2", cfg["t2"]), ("t3", cfg["t3"])):
             pools = P.T2_POOLS if tier == "t2" else P.T3_POOLS
             for area in areas:
                 for ex in pools[area]:
-                    ref = N.liftosaur_ref(ex, mode)
+                    ref = N.liftosaur_ref(ex, mode); w = W(ex, tier)
                     if ex not in defined:
                         k = pool_index[(area, ex)]
-                        out.append(f"{ref} / {_setvars(tier, weight, ex)} / id: tags({uid(ex)}) "
-                                   f"/ {_pool_progress(weight, area, k, days_of, sloti, init)} "
+                        out.append(f"{ref} / {_setvars(tier, w, ex)} / id: tags({uid(ex)}) "
+                                   f"/ {_pool_progress(w, area, k, days_of, sloti, init)} "
                                    f"/ {_pool_update()}")
                         defined.add(ex)
                     else:
-                        out.append(f"{ref} / {_setvars(tier, weight, ex)}")
+                        out.append(f"{ref} / {_setvars(tier, w, ex)}")
 
         # prehab finisher (fixed A/B; show A)
-        pre = cfg["prehab"]["A"]; pref = N.liftosaur_ref(pre, mode)
+        pre = cfg["prehab"]["A"]; pref = N.liftosaur_ref(pre, mode); pw = W(pre, "t3")
         if pre not in defined:
-            out.append(f"{pref} / 1x40 {weight}lb / progress: custom() {{~ "
+            out.append(f"{pref} / 1x40 {pw}lb / progress: custom() {{~ "
                        f"if (completedReps[1] >= 50) {{ weights += 5lb }} "
                        f"if (completedReps[1] < 30) {{ weights -= 5lb }} ~}}")
             defined.add(pre)
         else:
-            out.append(f"{pref} / 1x40 {weight}lb")
+            out.append(f"{pref} / 1x40 {pw}lb")
 
         # single centralized controller (defined once, reused after)
         if "CTRL" not in defined:
