@@ -172,12 +172,26 @@ def normalize(name):
 
 RIPLEY_SEED = {
     "Back Squat": 140,
-    "Bench Press": 105,
-    "Deadlift": 115,        # logged as light "movement practice" — will ramp quickly
+    "Bench Press": 135,
+    "Deadlift": 135,
     "Overhead Press": 55,
     "Lat Pulldown": 75,
     "Face Pull": 50,
     "Standing Calf Raise": 0,   # bodyweight, 3s/3s tempo
+    # Nate-set starts (2026-06-28)
+    "Seated DB Shoulder Press": 10,
+    "Romanian Deadlift": 85, "Sumo Deadlift": 85, "Front Squat": 85,
+    "Safety Bar Squat": 85, "Straight-Leg Deadlift": 85,
+    "Bulgarian Split Squat": 0, "Step Up": 0,
+    "Single-Leg Standing Calf Raise": 0, "Deficit Standing Calf Raise": 0,
+    "Bent-Knee (Soleus) Calf Raise": 0,
+    "Dumbbell Shrug": 30, "Hex-Bar Shrug": 60,
+    "Fly": 10, "Incline Fly": 10,
+    "Lateral Raise": 5, "Lean-In DB Lateral Raise": 5,
+    "Standing Triceps Ext": 30, "Lying Triceps Ext": 30, "Tricep Pushdown": 30,
+    "Kickback": 10, "Alternating Curl": 10, "Zottman Curl": 10,
+    "Cable Curl": 20, "Biceps Curl": 20,
+    "Russian Twist": 10,
 }
 
 # Band-assisted lifts — assistance reduced one band level per success.
