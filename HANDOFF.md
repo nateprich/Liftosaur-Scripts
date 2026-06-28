@@ -35,11 +35,14 @@ plan and remains the fallback if Option A evals fail. See `docs/integration-plan
 | Exercise name resolution (58 names) | ✅ 19 known, 23 canonical maps, 16 customs |
 | Full-program generator | ✅ `lifting/evals/generate.py` |
 | **Tier-4 size probe (make-or-break)** | ✅ **PASSED — 37 KB / 108 listings parses+runs 0.7s** |
-| Differential eval harness | ⬜ TODO (next) |
-| Real rotation/progression wired into generator | ⬜ TODO (generator currently uses *representative* scripts) |
-| Tier 0-3 evals vs oracle | ⬜ TODO |
-| Register 16 customs in Liftosaur (production) | ⬜ TODO (MCP; not needed for evals) |
-| Pending from Nate | band progression list; per-exercise bodyweight/time anchors |
+| Differential eval harness | ✅ **ALL PASS** — controller collision (4 seeds×25), T1 ladder, T2 ladder+exhaust (`lifting/evals/differential.py`) |
+| Real rotation/progression wired into generator | ✅ generator now emits oracle-validated scripts (per-group weights, T1 AMRAP ladder, T2/T3 ladder+exhaust cross-write, collision-aware controller) |
+| Per-exercise seeded weights (prod) | ✅ Ripley seed → 0lb bodyweight → 45lb default (`generate(mode="prod")`) |
+| Register 16 customs in Liftosaur (production) | ✅ all 16 via MCP `create_custom_exercise` (`lifting/evals/register_customs.py`) |
+| **Program installed** | ✅ **"T1/T2/T3 Auto-Rotation" (id=svgippbw)** — NEW program, existing 9 untouched (`lifting/install.py`) |
+| Prod program parses+runs (account context) | ✅ 50 KB, 0.74s, no error (REST playground + MCP `run_playground`) |
+| In-app smoke test (Nate) | ⬜ verify runtime gating + log one real session (see §9) |
+| Pending from Nate | confirm band-vs-rep progression for bodyweight T3; per-exercise bodyweight/time anchors; real seed weights for non-seeded pool lifts |
 
 ---
 
@@ -95,6 +98,21 @@ machine-readable source) and `docs/protocol.md` (prose).
 | `set_state_variable` *command* timing | ⚠ applies **+1 session late** | drive exhaustion via exercise progress (own `completedReps` or cross-write), NOT the command |
 | Full program (108 listings, 37 KB, big controller) | ✅ parses+runs 0.7s | **no size ceiling — Option A viable** |
 | REST custom-exercise endpoint | ❌ 404 | register customs via MCP or app |
+| **Differential vs oracle** (controller collision 4×25, T1 ladder, T2 ladder+exhaust) | ✅ **ALL PASS** | progression + rotation math is correct |
+| Per-group weights `3x4 W,1x4+ W` | ✅ required | shared trailing weight after a comma (`3x4,1x4+ 100lb`) breaks the parser |
+| `change_reps` moves target AND completed together | ⚠ | tests compare against a hardcoded `var.base`, not `reps` |
+| `setVariationIndex` reads return the **pre-change** value | ⚠ writes deferred to script end | parse active level from the `!` marker, not `state.lvl` |
+| Exercise name containing `(` | ❌ `parse_error` at the name | `prod_name()` strips parens (registered + referenced name must match) |
+| Custom muscle names | validated vocabulary | `Rhomboids` invalid → use `Trapezius Lower/Middle Fibers`; types: core/pull/push/legs/upper/lower |
+| Program-stats estimator | ⚠ does **not** run `update:` gating | reports inflated sets/min (~84/day); the real day view is gated — trust the app, not the estimate |
+
+### MCP endpoint (account context — customs resolve here)
+`POST https://www.liftosaur.com/mcp`, JSON-RPC `tools/call`, Bearer key, header
+`Accept: application/json, text/event-stream`. Tools: `create_program`,
+`update_program`, `get_program` (returns JSON wrapper `{id,name,text,...}` — use
+`.text`), `delete_program`, `list_programs`, `run_playground`, `list_exercises`,
+`create_custom_exercise` / `list_custom_exercises` / `update_` / `delete_`,
+`get_history` / `create_history_record`, `*_gym` / `*_equipment`, `*_measurement`.
 
 ### Playground API (the eval workhorse)
 `POST https://www.liftosaur.com/api/v1/playground`
@@ -156,37 +174,49 @@ use canonical names, genuinely-absent ones become customs.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 python3 -m lifting.run --selftest          # Python engine self-test (rules + rotation)
 python3 -m lifting.run                      # derive starting weights + Session 1
-python3 - <<'PY'                            # size probe
-import sys; sys.path.insert(0,'.')
-from lifting.evals import generate as G
-print(len(G.generate(mode='eval')), 'bytes')
-PY
+python3 -m lifting.evals.differential       # differential evals vs oracle (ALL PASS)
+python3 -m lifting.evals.register_customs   # register/refresh the 16 custom exercises (idempotent)
+python3 -m lifting.install                  # create the prod program (refuses if name exists)
+python3 -m lifting.install --update         # overwrite the installed program in place
 ```
 
-Playground call pattern: see `lifting/evals/` and §5. Re-use the helper shape from
-the probe scripts (POST programText + commands, read updatedProgramText).
+Playground call pattern: see `lifting/evals/` and §5 (POST programText + commands,
+read updatedProgramText). MCP pattern (account context, customs resolve): JSON-RPC
+`tools/call` to `https://www.liftosaur.com/mcp` with Bearer key — tools include
+`create_program`, `update_program`, `get_program`, `run_playground`,
+`create_custom_exercise`, `list_*`. Note `get_program` returns a JSON wrapper
+`{id,name,text,...}` — use the `.text` field.
 
 ---
 
-## 9. Remaining work (in order)
+## 9. Remaining work / open issues
 
-1. **Differential harness** (`lifting/evals/`): `playground.py` (chain sessions:
-   feed `updatedProgramText` forward), `oracle.py` (drive `engine.py` over the same
-   inputs), `differential.py` (diff state per step; report first divergence).
-2. **Wire the REAL rules into `generate.py`.** It currently emits *representative*
-   scripts (valid + correct size, not exact). Replace with:
-   - T1 set-variation ladder + AMRAP/+5/+10/90%-reset progress.
-   - T2/T3 ladders + exhaustion cross-write to the controller (`state[999].sN_ex = 1`).
-   - Controller: real collision-aware advance (skip up to 3 for 4-day Core — note
-     Liftoscript has no `while`, so **unroll** the skip), re-seed `last_L1 − 5`.
-   - Prehab float; calf 3s/3s tempo (descriptions); band-assist (assisting equipment).
-3. **Run Tier 0-3 evals** against the oracle (see `docs/eval-plan.md`). Gate:
-   100% step-match over ≥200 sessions × ≥10 seeds.
-4. **Register the 16 customs** (production). REST has no endpoint (404). Use the
-   **MCP `create_custom_exercise`** tool (server `https://www.liftosaur.com/mcp`,
-   JSON-RPC, Bearer lftsk key) or one-time app creation. Then `generate(mode="prod")`.
-5. **Install**: `POST /programs` a NEW program (don't touch the existing 8),
-   shadow-run vs current logging, then cut over.
+**Build + install are complete and validated.** What's left is in-app acceptance
+and two intentional simplifications to confirm with Nate.
+
+1. **In-app smoke test (critical — needs Nate's phone/app).** Open the installed
+   program "T1/T2/T3 Auto-Rotation" and confirm:
+   - **Runtime gating:** each day shows only the active rotation (~6-8 exercises),
+     not all ~30 pool members. The `update: custom()` script sets `numberOfSets=0`
+     for inactive ones (validated primitive, §5). ⚠️ The Liftosaur **program-stats
+     estimator does NOT run `update:` scripts**, so it reports ~84 sets / ~446 min
+     per day — that's a static-analysis artifact, not the real workout. Trust the
+     actual day view, not the stats number.
+   - **One logged session:** complete a T1 (AMRAP) + a T2 to L-up, and force a T2
+     exhaust over a few sessions to watch the rotation advance. The progression
+     math is oracle-validated, but the playground can't simulate a partial "miss"
+     for a `completedReps >= reps` script, so a single real session is the final proof.
+2. **Bodyweight/banded T3 progression (simplification to confirm).** All T2/T3 pool
+   exercises currently use the weighted ladder (+5lb on completion). Bodyweight T3
+   movements start at 0lb and "progress" by adding external load. The **band-assist
+   ladder is encoded** (`protocol.BANDS`, `band_assist()`) but **not yet wired** into
+   the progression scripts. If Nate wants rep-based or band-reduction progression for
+   pure-bodyweight movements, that's a focused follow-up in `generate._pool_progress`.
+3. **Starting weights.** Seeded lifts use Ripley values; non-seeded weighted pool
+   exercises default to **45lb** (placeholder to dial in-app on first exposure).
+   Provide real seeds (or a KeyLifts pull) to replace the defaults.
+4. **Prehab float** uses a simple ±5lb auto-adjust to hold 30-50 reps — confirm it
+   matches intent; tempo/“+1s” variants are descriptive only.
 
 Commit frequently (small logical commits) so progress survives context limits.
 
@@ -204,3 +234,9 @@ Commit frequently (small logical commits) so progress survives context limits.
 - **Source of truth:** `lifting/protocol.py` for rules; this repo is now the
   canonical home for the build (originals were authored under `~/Claude/scripts/lifting`
   and `~/Claude/areas/physical-health/exercise/`).
+- **Shipped (2026-06-28):** differential evals went green, the generator was wired
+  to emit the validated scripts, all 16 customs were registered via MCP, and the
+  program was installed as **"T1/T2/T3 Auto-Rotation" (id=svgippbw)** — a NEW program,
+  leaving Nate's existing 9 untouched. Remaining work is in-app acceptance (§9), not
+  build work. The build path (`protocol → engine/oracle → generate → install`) is
+  fully reproducible via `python3 -m lifting.install`.
