@@ -77,6 +77,19 @@ def _pool_progress(weight, area, k, days_of, sloti, init):
             "weights = state.w ~}")
 
 
+def _t3_progress(area, k, days_of, init, weight):
+    """T3 (optional accessory): only a FULL completion bumps weight (+5lb). A
+    partial or skipped session repeats the same prescription next time — no
+    deload, no level drop, no auto-rotation. Active flags gate visibility."""
+    ainit = {1: 0, 2: 0, 3: 0, 4: 0}
+    for d in days_of[area]:
+        ainit[d] = 1 if init[(area, d)] == k else 0
+    return (f"progress: custom(a1: {ainit[1]}, a2: {ainit[2]}, a3: {ainit[3]}, a4: {ainit[4]}, "
+            f"w: {weight}lb) {{~ "
+            "if (completedReps >= reps) { state.w += 5lb } "
+            "weights = state.w ~}")
+
+
 def _pool_update():
     return ("update: custom() {~ if (setIndex == 0) { "
             "if (day == 1 && state.a1 == 0) { numberOfSets = 0 } "
@@ -163,10 +176,10 @@ def generate(mode="eval", weight=100):
         # T1 (fixed; progression defined once)
         t1 = cfg["t1"]; ref = N.liftosaur_ref(t1, mode); tw = W(t1, "t1")
         if t1 not in defined:
-            out.append(f"{ref} / {_setvars('t1', tw)} / {_t1_script(tw)}")
+            out.append(f"{ref} / {_setvars('t1', tw)} / warmup: none / {_t1_script(tw)}")
             defined.add(t1)
         else:
-            out.append(f"{ref} / {_setvars('t1', tw)}")
+            out.append(f"{ref} / {_setvars('t1', tw)} / warmup: none")
 
         # T2 + T3 slots: list every pool exercise, gated
         for tier, areas in (("t2", cfg["t2"]), ("t3", cfg["t3"])):
@@ -179,23 +192,27 @@ def generate(mode="eval", weight=100):
                         w = P.band_weight(0)   # start fully assisted (negative)
                     if ex not in defined:
                         k = pool_index[(area, ex)]
-                        prog = (_band_progress(area, k, days_of, sloti, init) if band
-                                else _pool_progress(w, area, k, days_of, sloti, init))
-                        out.append(f"{ref} / {_setvars(tier, w, ex)} / id: tags({uid(ex)}) "
+                        if tier == "t3":
+                            prog = _t3_progress(area, k, days_of, init, w)
+                        elif band:
+                            prog = _band_progress(area, k, days_of, sloti, init)
+                        else:
+                            prog = _pool_progress(w, area, k, days_of, sloti, init)
+                        out.append(f"{ref} / {_setvars(tier, w, ex)} / warmup: none / id: tags({uid(ex)}) "
                                    f"/ {prog} / {_pool_update()}")
                         defined.add(ex)
                     else:
-                        out.append(f"{ref} / {_setvars(tier, w, ex)}")
+                        out.append(f"{ref} / {_setvars(tier, w, ex)} / warmup: none")
 
         # prehab finisher (fixed A/B; show A)
         pre = cfg["prehab"]["A"]; pref = N.liftosaur_ref(pre, mode); pw = W(pre, "t3")
         if pre not in defined:
-            out.append(f"{pref} / 1x40 {pw}lb / progress: custom() {{~ "
+            out.append(f"{pref} / 1x40 {pw}lb / warmup: none / progress: custom() {{~ "
                        f"if (completedReps[1] >= 50) {{ weights += 5lb }} "
                        f"if (completedReps[1] < 30) {{ weights -= 5lb }} ~}}")
             defined.add(pre)
         else:
-            out.append(f"{pref} / 1x40 {pw}lb")
+            out.append(f"{pref} / 1x40 {pw}lb / warmup: none")
 
         # single centralized controller (defined once, reused after)
         engine = "Rotation Engine" if mode == "prod" else "Wrist Roller"
